@@ -7,6 +7,8 @@ license.workspace = true
 description = "Bounded epidemic peer fanout and acknowledgement decisions"
 readme = "README.md"
 exclude = ["src/**/tests.rs", "tests/"]
+keywords = ["gossip", "epidemic", "dissemination", "peer-to-peer", "no-std"]
+categories = ["no-std", "algorithms"]
 [dependencies]
 placement-machines.workspace = true
 [lints]
