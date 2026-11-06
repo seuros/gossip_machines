@@ -1,0 +1,17 @@
+module GossipMachines
+  VERSION: String
+
+  class Rumor
+    MAX_PEERS: Integer
+    FANOUT: Integer
+
+    def self.new: (peers: Array[Integer], attempt_limit: Integer) -> Rumor
+    def round: (Integer seed) -> Array[Integer?]
+    def acknowledge: (Integer peer_id) -> bool
+    def peers: () -> Array[Integer]
+    def status: (Integer peer_id) -> [Integer, bool]?
+    def delivered?: () -> bool
+    def exhausted?: () -> bool
+    def attempt_limit: () -> Integer
+  end
+end

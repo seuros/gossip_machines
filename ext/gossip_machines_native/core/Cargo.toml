@@ -1,0 +1,12 @@
+[package]
+name = "gossip-machines"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Bounded epidemic peer fanout and acknowledgement decisions"
+readme = "README.md"
+[dependencies]
+placement-machines.workspace = true
+[lints]
+workspace = true
