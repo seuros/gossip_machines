@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/seuros/gossip_machines/compare/gossip-machines-v0.2.1...gossip-machines-v0.2.2) (2026-11-06)
+
+
+### Bug Fixes
+
+* crates.io keywords and categories for the core ([74fe5f3](https://github.com/seuros/gossip_machines/commit/74fe5f33cc306f1cf0bab78b5ec91448aa2d12cb))
+
 ## [0.2.1](https://github.com/seuros/gossip_machines/compare/gossip-machines-v0.2.0...gossip-machines-v0.2.1) (2026-11-06)
 
 
