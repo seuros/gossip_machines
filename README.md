@@ -11,10 +11,10 @@ gem 'gossip_machines'
 ```
 
 ```ruby
-rumor = GossipMachines::Rumor.new(peers: node_ids, attempt_limit: 3)
+rumor = GossipMachines::Rumor.new(node_ids, 3)   # peers, attempt_limit
 
 until rumor.delivered? || rumor.exhausted?
-  rumor.round(rand(2**32)).compact.each do |peer|
+  rumor.round(rand(2**32), 3).each do |peer|     # seed, fanout
     rumor.acknowledge(peer) if transport.send(peer, payload)
   end
 end
@@ -40,7 +40,7 @@ This gem is those two ledgers, plus the part that decides who to try next.
 > **AMS Demers**, NCC-4210, *Demers*-class relay vessel.
 > Spread the signal. Do not mistake exhausted transmissions for delivered orders.
 
-The relay doesn't carry the message. It keeps the roster: which ships have been hailed, how many times, and which have confirmed. Each transmission window it names three ships, the ones hailed least, and hands them to the signal officer. A ship that never confirms stays on the roster until its hail budget is spent. Even then, it stays on the roster as unconfirmed. The relay never promotes silence to receipt.
+The relay doesn't carry the message. It keeps the roster: which ships have been hailed, how many times, and which have confirmed. Each transmission window it names as many ships as the signal officer has channels, the ones hailed least, and hands them to the signal officer. A ship that never confirms stays on the roster until its hail budget is spent. Even then, it stays on the roster as unconfirmed. The relay never promotes silence to receipt.
 
 Somewhere on the bridge, an ensign proposes:
 
@@ -62,11 +62,12 @@ stateDiagram-v2
     [*] --> untried
     untried --> tried: selected in a round, attempt charged
     tried --> tried: selected again, below attempt_limit
-    tried --> acknowledged: acknowledge(peer)
-    untried --> acknowledged: acknowledge(peer)
+    tried --> acknowledged: acknowledge(peer) → :acknowledged
+    untried --> acknowledged: acknowledge(peer) → :acknowledged
     tried --> spent: attempts reach attempt_limit
+    acknowledged --> acknowledged: acknowledge(peer) → :duplicate
     acknowledged --> [*]: never selected again
-    spent --> acknowledged: late acknowledge(peer)
+    spent --> acknowledged: late acknowledge(peer) → :acknowledged
     spent --> [*]: exhausted, still not delivered
 ```
 
@@ -79,7 +80,7 @@ sequenceDiagram
     participant S9 as Server 9
     participant Rest as Servers 1-8, 10-12
 
-    You->>R: round(seed)
+    You->>R: round(seed, 3)
     R-->>You: three untried peers
     You->>Rest: notify
     Rest-->>You: ok
@@ -87,18 +88,18 @@ sequenceDiagram
 
     Note over You,R: rounds continue, untried peers first
 
-    You->>R: round(seed)
+    You->>R: round(seed, 3)
     R-->>You: [9, ...]
     You->>S9: notify
     Note over S9: mid-deploy, request dropped
     Note over R: 9 has 1 attempt, no ack
 
-    You->>R: round(seed)
-    R-->>You: [9, nil, nil]
+    You->>R: round(seed, 3)
+    R-->>You: [9]
     You->>S9: notify
     S9-->>You: ok
     You->>R: acknowledge(9)
-    R-->>You: true
+    R-->>You: :acknowledged
 
     Note over R: delivered? true. Twelve of twelve.
 ```
@@ -107,46 +108,49 @@ sequenceDiagram
 
 ### Rounds
 
-`round` takes a seed and returns three slots. Each slot is a peer id or `nil` when fewer than three peers are eligible. Peers never repeat within a round, and selecting a peer charges one attempt against it immediately.
+`round(seed, max)` takes a seed and the most peers you can send to right now, and returns an Array of at most `max` peer ids. Peers never repeat within a round, and selecting a peer charges one attempt against it immediately. Fewer than `max` eligible peers gives a shorter Array; none gives `[]`.
 
 ```ruby
-rumor = GossipMachines::Rumor.new(peers: [10, 20, 30, 40, 50], attempt_limit: 2)
+rumor = GossipMachines::Rumor.new([10, 20, 30, 40, 50], 2)
 
-rumor.round(1)    # => [30, 50, 20]
-rumor.round(1)    # => [10, 40, 30]
-rumor.round(1)    # => [50, 20, 10]
-rumor.round(1)    # => [40, nil, nil]
-rumor.round(1)    # => [nil, nil, nil]
+rumor.round(1, 3)    # => [30, 50, 20]
+rumor.round(1, 3)    # => [10, 40, 30]
+rumor.round(1, 3)    # => [50, 20, 10]
+rumor.round(1, 3)    # => [40]
+rumor.round(1, 3)    # => []
 ```
 
 Five peers, two attempts each, ten sends total. Notice the second round reaches for 10 and 40, the two nobody had tried yet, before giving 30 its second go. Fewest attempts always rank first. The seed only settles ties, so the same seed gives the same order every time.
 
+A round is a dispatch, not a request that can be turned down. The attempts it charges are exactly the peers it returns, one each, and it counts nothing else: there is no round counter. So a round that returns `[]`, because everyone acknowledged, everyone is spent, the roster is empty or `max` is 0, charges nobody and changes nothing. Call it as often as you like.
+
 ### Acknowledgements
 
-When a peer confirms, say so. It returns `true` for any peer on the roster, including one that already acknowledged, and `false` for a stranger.
+When a peer confirms, say so. The first time answers `:acknowledged`. Saying it again answers `:duplicate`: honoured, already true, nothing changed. A stranger is refused with `:unknown_peer`, and nothing changed either.
 
 ```ruby
-rumor = GossipMachines::Rumor.new(peers: [10, 20, 30, 40, 50], attempt_limit: 2)
-rumor.round(99)        # => [50, 30, 40]
+rumor = GossipMachines::Rumor.new([10, 20, 30, 40, 50], 2)
+rumor.round(99, 3)     # => [50, 30, 40]
 
-rumor.acknowledge(10)  # => true
-rumor.acknowledge(20)  # => true
-rumor.acknowledge(77)  # => false, not a peer
+rumor.acknowledge(10)  # => :acknowledged
+rumor.acknowledge(20)  # => :acknowledged
+rumor.acknowledge(20)  # => :duplicate, it already had
+rumor.acknowledge(77)  # => :unknown_peer, not on the roster
 
-rumor.round(99)        # => [50, 30, 40]  10 and 20 are done, never selected again
-rumor.status(10)       # => [0, true]     zero attempts, acknowledged anyway
-rumor.status(30)       # => [2, false]    two attempts, still silent
+rumor.round(99, 3)     # => [50, 30, 40]  10 and 20 are done, never selected again
+rumor.status(10)       # => #<data GossipMachines::Status attempts=0, acknowledged=true>
+rumor.status(30)       # => #<data GossipMachines::Status attempts=2, acknowledged=false>
 ```
 
-An acknowledged peer drops out of every future round. You can acknowledge a peer you never sent to; maybe it heard from someone else. That's gossip.
+An acknowledged peer drops out of every future round. You can acknowledge a peer you never sent to; maybe it heard from someone else. That's gossip. An acknowledgement never touches the attempt count.
 
 ### Delivered is not exhausted
 
 These two answer different questions and you need both.
 
 ```ruby
-rumor = GossipMachines::Rumor.new(peers: [10, 20], attempt_limit: 1)
-rumor.round(0)        # => [10, 20, nil]
+rumor = GossipMachines::Rumor.new([10, 20], 1)
+rumor.round(0, 3)     # => [10, 20]
 
 rumor.exhausted?      # => true   nobody has attempts left
 rumor.delivered?      # => false  nobody has confirmed
@@ -156,37 +160,51 @@ rumor.acknowledge(20)
 rumor.delivered?      # => true
 ```
 
-`exhausted?` tells you to stop calling `round`. `delivered?` tells you the rollout is done. The gap between them is your list of peers to escalate.
+`exhausted?` tells you `round` has nothing left to give: every further round is `[]`. `delivered?` tells you the rollout is done. The gap between them is your list of peers to escalate.
 
 ### Status and roster
 
 ```ruby
-rumor = GossipMachines::Rumor.new(peers: [0, 2**64 - 1], attempt_limit: 1)
+rumor = GossipMachines::Rumor.new([0, 2**64 - 1], 1)
 rumor.peers              # => [0, 18446744073709551615]
-rumor.status(0)          # => [0, false]  [attempts, acknowledged]
+rumor.status(0)          # => #<data GossipMachines::Status attempts=0, acknowledged=false>
+rumor.status(0).attempts # => 0
 rumor.status(1)          # => nil, not a peer
 rumor.attempt_limit      # => 1
+rumor.capacity           # => 64
 ```
 
-Both `peers` and `status` hand back fresh arrays. Mutate them freely, the rumor doesn't notice.
+`status` answers a `GossipMachines::Status`, a frozen `Data` with the same two fields as the core's `Status`. `peers` and `round` hand back fresh arrays. Mutate them freely, the rumor doesn't notice.
 
 ### Nobody to tell
 
-An empty roster is both delivered and exhausted from the start, and rounds come back all `nil`.
+An empty roster is both delivered and exhausted from the start, and rounds come back empty.
 
 ```ruby
-empty = GossipMachines::Rumor.new(peers: [], attempt_limit: 1)
+empty = GossipMachines::Rumor.new([], 1)
 empty.delivered?      # => true
 empty.exhausted?      # => true
-empty.round(0)        # => [nil, nil, nil]
+empty.round(0, 3)     # => []
 ```
 
 ## The Rules of the Relay
 
-- **Up to 64 peers** per rumor, exposed as `Rumor::MAX_PEERS`. Each round picks at most `Rumor::FANOUT`, which is 3.
-- **Peer ids and seeds are Integers** in `0..2**64-1`. **Attempt limits** are Integers in `1..2**32-1`. Floats, strings, nil, and objects with `to_int` raise `TypeError`. Out of range raises `RangeError`.
-- **`peers:` must be a real Array** with no duplicates. Both keywords are required. Duplicates, more than 64 peers, an unknown keyword, or a missing one raise `ArgumentError`.
-- **Bad input charges nothing.** A `round` that raises on its seed leaves every attempt counter where it was.
+- **Up to 64 peers** per rumor, exposed as `Rumor::MAX_PEERS` and `capacity`. Fanout is yours: `round(seed, max)` returns at most `max` peers.
+- **Ruby mirrors the core.** `Rumor.new(peers, attempt_limit)` takes the same two arguments in the same order as the Rust constructor, positionally, with no defaults. `status` answers the core's `Status` as a `Data`. Peer ids are the core's `NodeId`, plain Integers you choose.
+- **Peer ids, seeds and `max` are Integers** in `0..2**64-1`. **Attempt limits** are Integers in `1..2**32-1`. Floats, strings, nil, and objects with `to_int` raise `TypeError`. Out of range raises `RangeError`.
+- **`peers` must be a real Array** with no duplicates; it may be empty. Duplicates, more than 64 peers, or the wrong number of arguments raise `ArgumentError`.
+- **Refusals don't raise.** `:unknown_peer` is an answer, and a refused call changes nothing. Only malformed input raises.
+- **Repeats are honoured.** Acknowledging a peer that already acknowledged answers `:duplicate`. The rumor can prove it from that peer's own ledger, so it is a success that changes nothing, never a refusal.
+- **An empty round is an answer, not a refusal.** `round` charges exactly the peers it returns. `[]` charges nobody and changes nothing.
+- **Every answer, by method.**
+
+  | Method | Honoured | Refused |
+  | --- | --- | --- |
+  | `round(seed, max)` | an Array of at most `max` peer ids, each charged one attempt; `[]` when nobody is eligible | never refuses |
+  | `acknowledge(peer)` | `:acknowledged`, or `:duplicate` when the peer had already acknowledged | `:unknown_peer` |
+  | `status(peer)` | a `Status`, or `nil` for a peer not on the roster (a query) | never refuses |
+- **No ids are issued, no clock is read.** Peer ids come from you, so there are no scopes and nothing to resume after a restart except what you saved yourself. Time between rounds is yours.
+- **Bad input charges nothing.** A `round` that raises on its seed or `max` leaves every attempt counter where it was.
 - **Frozen means frozen.** `freeze` the rumor and `round` and `acknowledge` raise `FrozenError`, even for an unknown peer or an exhausted roster. `status`, `peers`, and the predicates still read.
 
 ## What You Think You're Doing vs Reality

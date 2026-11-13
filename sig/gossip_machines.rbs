@@ -1,17 +1,46 @@
 module GossipMachines
   VERSION: String
 
-  class Rumor
-    MAX_PEERS: Integer
-    FANOUT: Integer
+  # Refusals: the call was not honoured and changed nothing. Every reason has
+  # its own symbol; there is no catch-all.
+  type refusal = :unknown_peer
 
-    def self.new: (peers: Array[Integer], attempt_limit: Integer) -> Rumor
-    def round: (Integer seed) -> Array[Integer?]
-    def acknowledge: (Integer peer_id) -> bool
+  # The core's `Acknowledgement`: what an honoured `acknowledge` did.
+  # :duplicate is an idempotent repeat that changed nothing.
+  type acknowledgement = :acknowledged | :duplicate
+
+  # The core's `Status`. `attempts` counts sends charged to the peer.
+  class Status < Data
+    attr_reader attempts: Integer
+    attr_reader acknowledged: bool
+    def self.new: (Integer attempts, bool acknowledged) -> Status
+                | (attempts: Integer, acknowledged: bool) -> Status
+  end
+
+  # Peer ids are the core's `NodeId`: Integers in 0..2**64-1, chosen by the caller.
+  class Rumor
+    # Peers one rumor can hold.
+    MAX_PEERS: Integer
+
+    # `peers` is an Array of distinct peer ids, at most MAX_PEERS, possibly
+    # empty; `attempt_limit` is an Integer in 1..2**32-1. Raises ArgumentError
+    # for a repeated id or too many peers (the core answers None), RangeError
+    # for an attempt_limit out of range.
+    def self.new: (Array[Integer] peers, Integer attempt_limit) -> Rumor
+    # A dispatch: at most `max` distinct eligible peers, each charged one
+    # attempt. [] when nobody is eligible (delivered, exhausted, no peers) or
+    # `max` is 0, and then nothing changes. Never refuses.
+    def round: (Integer seed, Integer max) -> Array[Integer]
+    # Honoured: :acknowledged, or :duplicate when the peer had already
+    # acknowledged. Refused: :unknown_peer.
+    def acknowledge: (Integer peer) -> (acknowledgement | :unknown_peer)
     def peers: () -> Array[Integer]
-    def status: (Integer peer_id) -> [Integer, bool]?
+    # nil when `peer` is not in the membership.
+    def status: (Integer peer) -> Status?
     def delivered?: () -> bool
     def exhausted?: () -> bool
     def attempt_limit: () -> Integer
+    # MAX_PEERS.
+    def capacity: () -> Integer
   end
 end
