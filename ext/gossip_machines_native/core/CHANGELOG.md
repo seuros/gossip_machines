@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.0](https://github.com/seuros/gossip_machines/compare/gossip-machines-v0.2.2...gossip-machines-v0.3.0) (2026-11-13)
+
+
+### ⚠ BREAKING CHANGES
+
+* converted to the fleet conventions. One exhaustive Refusal per crate, Result from every operation that can refuse, a refusal changes nothing, provable idempotent repeats are honoured, Ruby mirrors the core. No compatibility aliases. Requires placement-machines >= 0.3. round writes into a caller buffer; NodeId is re-exported.
+
+### Features
+
+* refusals, named acknowledgements and caller-sized rounds for Rumor ([e78b95e](https://github.com/seuros/gossip_machines/commit/e78b95e0d6bedf52d0f92df1d2d5b749cf9e1339))
+
 ## [0.2.2](https://github.com/seuros/gossip_machines/compare/gossip-machines-v0.2.1...gossip-machines-v0.2.2) (2026-11-06)
 
 
