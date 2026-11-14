@@ -140,10 +140,23 @@ class GossipMachinesTest < Minitest::Test
     refute_predicate @rumor, :exhausted?
   end
 
+  def test_messages_name_the_argument
+    {
+      -> { R.new([1.5], 1) } => [TypeError, 'peer must be an Integer'],
+      -> { R.new([], nil) } => [TypeError, 'attempt_limit must be an Integer'],
+      -> { R.new([], U32_MAX + 1) } => [RangeError, "attempt_limit must be in 1..=#{U32_MAX}"],
+      -> { @rumor.round(0, 1.5) } => [TypeError, 'max must be an Integer'],
+      -> { @rumor.acknowledge(-1) } => [RangeError, "peer must be in 0..=#{MAX}"],
+      -> { S.new(U32_MAX + 1, true) } => [RangeError, "attempts must be in 0..=#{U32_MAX}"]
+    }.each do |call, (error, message)|
+      assert_equal message, assert_raises(error, &call).message
+    end
+  end
+
   def test_peer_arrays_are_strict_detached_and_frozen_input_is_safe
     coercible = Object.new
     def coercible.to_ary = [1]
-    [nil, {}, coercible].each do |invalid|
+    [nil, {}, coercible, Class.new(Array).new([1])].each do |invalid|
       assert_raises(TypeError) { R.new(invalid, 1) }
     end
     input = [1, 2].freeze
@@ -160,6 +173,9 @@ class GossipMachinesTest < Minitest::Test
     @rumor.freeze
     assert_raises(FrozenError) { @rumor.round(0, 3) }
     assert_raises(FrozenError) { @rumor.acknowledge(9) }
+    # Frozen is checked first, before the arguments are read.
+    assert_raises(FrozenError) { @rumor.round(1.5, -1) }
+    assert_raises(FrozenError) { @rumor.acknowledge('9') }
     assert_equal S.new(0, false), @rumor.status(0)
     assert_equal [0, MAX], @rumor.peers
     exhausted = R.new([], 1).freeze

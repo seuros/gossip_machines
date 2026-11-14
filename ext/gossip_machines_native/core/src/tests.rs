@@ -1,6 +1,7 @@
 #![allow(clippy::expect_used, clippy::unwrap_used, missing_docs)]
 extern crate std;
 use super::*;
+use matryona_machines::testing::{refuses, unchanged};
 use std::vec::Vec;
 
 const ONCE: NonZeroU32 = NonZeroU32::MIN;
@@ -64,28 +65,20 @@ fn a_round_with_nobody_to_send_to_answers_zero_and_changes_nothing() {
     let mut rumor = pair(1);
     assert_eq!(round(&mut rumor, 3, 4).len(), 2);
     assert!(rumor.exhausted() && !rumor.delivered());
-    let spent = rumor.clone();
-    assert_eq!(round(&mut rumor, 4, 4), NOBODY);
-    assert_eq!(rumor, spent);
+    assert_eq!(unchanged(&mut rumor, |r| round(r, 4, 4)), NOBODY);
     // Delivered, attempts left over.
     let mut rumor = pair(5);
     assert_eq!(rumor.acknowledge(NodeId(1)), ACKNOWLEDGED);
     assert_eq!(rumor.acknowledge(NodeId(2)), ACKNOWLEDGED);
     assert!(rumor.delivered() && rumor.exhausted());
-    let done = rumor.clone();
-    assert_eq!(round(&mut rumor, 0, 4), NOBODY);
-    assert_eq!(rumor, done);
+    assert_eq!(unchanged(&mut rumor, |r| round(r, 0, 4)), NOBODY);
     // Empty membership: delivered from the start.
     let mut empty = Rumor::<4>::new(&[], ONCE).expect("empty");
     assert!(empty.delivered() && empty.exhausted());
-    let fresh = empty.clone();
-    assert_eq!(round(&mut empty, 0, 3), NOBODY);
-    assert_eq!(empty, fresh);
+    assert_eq!(unchanged(&mut empty, |r| round(r, 0, 3)), NOBODY);
     // No room in the buffer: nobody is charged for a send that was not planned.
     let mut rumor = pair(1);
-    let fresh = rumor.clone();
-    assert_eq!(rumor.round(0, &mut []), 0);
-    assert_eq!(rumor, fresh);
+    assert_eq!(unchanged(&mut rumor, |r| r.round(0, &mut [])), 0);
 }
 
 #[test]
@@ -113,25 +106,29 @@ fn exactly_the_peers_written_are_charged_one_attempt_each() {
 #[test]
 fn acknowledge_names_first_repeat_and_unknown() {
     let mut rumor = pair(1);
-    let fresh = rumor.clone();
-    assert_eq!(rumor.acknowledge(NodeId(9)), UNKNOWN);
-    assert_eq!(rumor, fresh);
+    refuses(&mut rumor, Refusal::UnknownPeer, |r| {
+        r.acknowledge(NodeId(9))
+    });
     // Acknowledging a peer never sent to is honoured: it heard elsewhere.
     assert_eq!(rumor.acknowledge(NodeId(1)), ACKNOWLEDGED);
     assert_eq!(rumor.status(NodeId(1)), Some(status(0, true)));
-    let held = rumor.clone();
-    assert_eq!(rumor.acknowledge(NodeId(1)), DUPLICATE);
-    assert_eq!(rumor.acknowledge(NodeId(9)), UNKNOWN);
-    assert_eq!(rumor, held);
+    assert_eq!(
+        unchanged(&mut rumor, |r| r.acknowledge(NodeId(1))),
+        DUPLICATE
+    );
+    refuses(&mut rumor, Refusal::UnknownPeer, |r| {
+        r.acknowledge(NodeId(9))
+    });
     // An acknowledged peer is never selected; a spent one may still ack late.
     assert_eq!(round(&mut rumor, 0, 2), [NodeId(2)]);
     assert!(rumor.exhausted() && !rumor.delivered());
     assert_eq!(rumor.acknowledge(NodeId(2)), ACKNOWLEDGED);
     assert_eq!(rumor.status(NodeId(2)), Some(status(1, true)));
     assert!(rumor.delivered());
-    let done = rumor.clone();
-    assert_eq!(rumor.acknowledge(NodeId(2)), DUPLICATE);
-    assert_eq!(rumor, done);
+    assert_eq!(
+        unchanged(&mut rumor, |r| r.acknowledge(NodeId(2))),
+        DUPLICATE
+    );
 }
 
 #[test]

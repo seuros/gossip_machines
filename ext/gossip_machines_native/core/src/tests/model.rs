@@ -1,17 +1,10 @@
 //! Random operation streams checked against a naive model.
 use super::*;
+use matryona_machines::testing::XorShift64;
 
-struct Draws(u64);
-impl Draws {
-    const fn next(&mut self) -> u64 {
-        self.0 ^= self.0 << 13;
-        self.0 ^= self.0 >> 7;
-        self.0 ^= self.0 << 17;
-        self.0
-    }
-    fn below(&mut self, bound: usize) -> usize {
-        usize::try_from(self.next() % bound as u64).unwrap()
-    }
+/// The next draw of `draws`, in `0..bound`, as an index.
+fn below(draws: &mut XorShift64, bound: usize) -> usize {
+    usize::try_from(draws.below(bound as u64)).unwrap()
 }
 
 /// Naive model: one row per peer, a round is "sort the eligible rows, take
@@ -44,10 +37,10 @@ impl Model {
 /// Answers seen: empty rounds, duplicate acks, unknown-peer refusals.
 fn run_model(seed: u64) -> [usize; 3] {
     const N: usize = 9;
-    let mut draws = Draws(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1);
-    let members = draws.below(N + 1);
+    let mut draws = XorShift64::new(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1);
+    let members = below(&mut draws, N + 1);
     // Ids 0..members scrambled into a sparse range; id zero can be a member.
-    let stride = draws.next() | 1;
+    let stride = draws.next_u64() | 1;
     let peers: Vec<NodeId> = (0..members as u64)
         .map(|index| NodeId(index.wrapping_mul(stride)))
         .collect();
@@ -61,8 +54,8 @@ fn run_model(seed: u64) -> [usize; 3] {
     for _ in 0..200 {
         let snapshot = rumor.clone();
         if draws.below(3) == 0 {
-            let fanout = draws.below(5);
-            let round_seed = draws.next();
+            let fanout = below(&mut draws, 5);
+            let round_seed = draws.next_u64();
             let expected = model.round(round_seed, fanout);
             assert_eq!(round(&mut rumor, round_seed, fanout), expected);
             if expected.is_empty() {
@@ -73,9 +66,9 @@ fn run_model(seed: u64) -> [usize; 3] {
             // Mostly members, sometimes a stranger.
             let known = draws.below(4) != 0 && !peers.is_empty();
             let peer = if known {
-                peers[draws.below(peers.len())]
+                peers[below(&mut draws, peers.len())]
             } else {
-                NodeId(draws.next())
+                NodeId(draws.next_u64())
             };
             let row = model.rows.iter_mut().find(|row| row.0 == peer);
             let expected = match row {
