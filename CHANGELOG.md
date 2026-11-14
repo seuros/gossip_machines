@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.0](https://github.com/seuros/gossip_machines/compare/gossip_machines/v0.2.0...gossip_machines/v0.3.0) (2026-11-14)
+
+
+### ⚠ BREAKING CHANGES
+
+* validate Status through the core, seal it, expose Rumor::CAPACITY
+
+### Features
+
+* validate Status through the core, seal it, expose Rumor::CAPACITY ([9fb790c](https://github.com/seuros/gossip_machines/commit/9fb790c5d570a70738086bc60a5b92aea589d93e))
+
 ## [0.2.0](https://github.com/seuros/gossip_machines/compare/gossip_machines/v0.1.3...gossip_machines/v0.2.0) (2026-11-13)
 
 
