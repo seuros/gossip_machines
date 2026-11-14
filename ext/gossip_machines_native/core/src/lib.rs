@@ -41,6 +41,10 @@ pub enum Acknowledgement {
 }
 
 /// One peer's two ledgers, as [`Rumor::status`] reads them.
+///
+/// Every pair of fields is a valid reading, so the fields are public and there
+/// is no constructor to pass: the bound on `attempts` is one rumor's
+/// [`Rumor::attempt_limit`], not a property of the value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Status {
     /// Sends charged to the peer so far, at most [`Rumor::attempt_limit`].
@@ -60,6 +64,9 @@ pub struct Rumor<const N: usize> {
 }
 
 impl<const N: usize> Rumor<N> {
+    /// Most peers a membership can hold: `N`, the compiled capacity.
+    pub const CAPACITY: usize = N;
+
     /// A rumor nobody has been sent or has acknowledged, for exactly `peers`.
     ///
     /// Callers leave the sender out of `peers`. An empty membership is valid
@@ -174,10 +181,10 @@ impl<const N: usize> Rumor<N> {
         self.attempt_limit
     }
 
-    /// Most peers a membership can hold: `N`.
+    /// Most peers a membership can hold: [`Self::CAPACITY`], which is `N`.
     #[must_use]
     pub const fn capacity(&self) -> usize {
-        N
+        Self::CAPACITY
     }
 
     const fn eligible(&self, index: usize) -> bool {

@@ -9,7 +9,11 @@ module GossipMachines
   # :duplicate is an idempotent repeat that changed nothing.
   type acknowledgement = :acknowledged | :duplicate
 
-  # The core's `Status`. `attempts` counts sends charged to the peer.
+  # The core's `Status`, whose every field pair is valid. `attempts` counts sends
+  # charged to the peer, an Integer in 0..2**32-1; `acknowledged` is true or
+  # false. `new` (and `with`) raises TypeError for a wrong type and
+  # RangeError for a count out of range: a Status that exists is valid.
+  # Sealed: subclassing raises TypeError and `allocate` is undefined.
   class Status < Data
     attr_reader attempts: Integer
     attr_reader acknowledged: bool
@@ -19,28 +23,30 @@ module GossipMachines
 
   # Peer ids are the core's `NodeId`: Integers in 0..2**64-1, chosen by the caller.
   class Rumor
-    # Peers one rumor can hold.
-    MAX_PEERS: Integer
+    # The core's `Rumor::<N>::CAPACITY`: the const-generic `N` the gem is
+    # compiled with, the most peers one rumor can hold.
+    CAPACITY: Integer
 
-    # `peers` is an Array of distinct peer ids, at most MAX_PEERS, possibly
-    # empty; `attempt_limit` is an Integer in 1..2**32-1. Raises ArgumentError
-    # for a repeated id or too many peers (the core answers None), RangeError
-    # for an attempt_limit out of range.
+    # `peers` is an Array of distinct peer ids, at most CAPACITY, possibly
+    # empty; `attempt_limit` is an Integer in 1..2**32-1. Raises TypeError for
+    # a non-Array or a non-Integer; RangeError for a repeated id or more than
+    # CAPACITY peers (the core answers None), an id outside 0..2**64-1 or an
+    # attempt_limit out of range.
     def self.new: (Array[Integer] peers, Integer attempt_limit) -> Rumor
     # A dispatch: at most `max` distinct eligible peers, each charged one
     # attempt. [] when nobody is eligible (delivered, exhausted, no peers) or
-    # `max` is 0, and then nothing changes. Never refuses.
+    # `max` is 0, and then nothing changes. Never refuses. Records no clock.
     def round: (Integer seed, Integer max) -> Array[Integer]
     # Honoured: :acknowledged, or :duplicate when the peer had already
-    # acknowledged. Refused: :unknown_peer.
-    def acknowledge: (Integer peer) -> (acknowledgement | :unknown_peer)
+    # acknowledged. Refused: :unknown_peer. Records no clock.
+    def acknowledge: (Integer peer) -> (acknowledgement | refusal)
     def peers: () -> Array[Integer]
     # nil when `peer` is not in the membership.
     def status: (Integer peer) -> Status?
     def delivered?: () -> bool
     def exhausted?: () -> bool
     def attempt_limit: () -> Integer
-    # MAX_PEERS.
+    # CAPACITY.
     def capacity: () -> Integer
   end
 end

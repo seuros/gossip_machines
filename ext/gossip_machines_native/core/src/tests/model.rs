@@ -21,18 +21,14 @@ struct Model {
     limit: u32,
 }
 impl Model {
-    fn eligible(&self) -> Vec<NodeId> {
+    fn eligible(&self) -> impl Iterator<Item = &(NodeId, u32, bool)> {
         self.rows
             .iter()
             .filter(|(_, attempts, acknowledged)| !acknowledged && *attempts < self.limit)
-            .map(|(peer, _, _)| *peer)
-            .collect()
     }
     fn round(&mut self, seed: u64, fanout: usize) -> Vec<NodeId> {
         let mut ranked: Vec<(u32, u64, NodeId)> = self
-            .rows
-            .iter()
-            .filter(|(_, attempts, acknowledged)| !acknowledged && *attempts < self.limit)
+            .eligible()
             .map(|(peer, attempts, _)| (*attempts, placement_machines::score(seed, *peer), *peer))
             .collect();
         ranked.sort_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)).then(a.2.cmp(&b.2)));
@@ -91,23 +87,23 @@ fn run_model(seed: u64) -> [usize; 3] {
                 }
             };
             assert_eq!(rumor.acknowledge(peer), expected);
-            match expected {
-                Ok(Acknowledgement::Acknowledged) => assert_ne!(rumor, snapshot),
-                Ok(Acknowledgement::Duplicate) => {
-                    tally[1] += 1;
-                    assert_eq!(rumor, snapshot);
-                }
-                Err(Refusal::UnknownPeer) => {
-                    tally[2] += 1;
-                    assert_eq!(rumor, snapshot);
-                }
+            let unchanged = match expected {
+                Ok(Acknowledgement::Acknowledged) => None,
+                Ok(Acknowledgement::Duplicate) => Some(1),
+                Err(Refusal::UnknownPeer) => Some(2),
+            };
+            if let Some(kind) = unchanged {
+                tally[kind] += 1;
+                assert_eq!(rumor, snapshot);
+            } else {
+                assert_ne!(rumor, snapshot);
             }
         }
         for (peer, attempts, acknowledged) in &model.rows {
             assert_eq!(rumor.status(*peer), Some(status(*attempts, *acknowledged)));
             assert!(*attempts <= model.limit);
         }
-        assert_eq!(rumor.exhausted(), model.eligible().is_empty());
+        assert_eq!(rumor.exhausted(), model.eligible().next().is_none());
         assert_eq!(rumor.delivered(), model.rows.iter().all(|row| row.2));
         assert_eq!(rumor.peers(), peers.as_slice());
     }

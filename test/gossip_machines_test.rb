@@ -16,9 +16,9 @@ class GossipMachinesTest < Minitest::Test
   def test_native_api_empty_membership_and_capacity
     assert_nil R.instance_method(:round).source_location
     assert_match(/\A\d+\.\d+\.\d+\z/, GossipMachines::VERSION)
-    assert_equal 64, R::MAX_PEERS
-    assert_equal 64, @rumor.capacity
-    refute R.const_defined?(:FANOUT)
+    assert_equal 64, R::CAPACITY
+    assert_equal R::CAPACITY, @rumor.capacity
+    refute GossipMachines.respond_to?(:__status)
     assert_raises(TypeError) { R.allocate }
     empty = R.new([], 1)
     assert_predicate empty, :delivered?
@@ -34,6 +34,24 @@ class GossipMachinesTest < Minitest::Test
     assert_equal S.new(attempts: 0, acknowledged: false), @rumor.status(MAX)
     assert_predicate @rumor.status(0), :frozen?
     assert_nil @rumor.status(1)
+  end
+
+  def test_a_status_is_valid_or_does_not_exist
+    coercible = Object.new
+    def coercible.to_int = 1
+    [1.0, nil, true, '1', coercible].each do |invalid|
+      assert_raises(TypeError) { S.new(invalid, false) }
+    end
+    [nil, 0, 1, 'true', :true].each do |invalid| # rubocop:disable Lint/BooleanSymbol
+      assert_raises(TypeError) { S.new(0, invalid) }
+    end
+    [-1, U32_MAX + 1, MAX].each do |invalid|
+      assert_raises(RangeError) { S.new(invalid, false) }
+      assert_raises(RangeError) { S.new(attempts: invalid, acknowledged: true) }
+    end
+    assert_equal U32_MAX, S.new(U32_MAX, true).attempts
+    assert_raises(RangeError) { S.new(1, false).with(attempts: -1) }
+    assert_raises(ArgumentError) { S.new(1) }
   end
 
   def test_sparse_capacity_uses_only_real_members_including_zero
@@ -83,14 +101,16 @@ class GossipMachinesTest < Minitest::Test
   end
 
   def test_constructor_validation_and_capacity
-    assert_raises(ArgumentError) { R.new([1, 1], 1) }
+    error = assert_raises(RangeError) { R.new([1, 1], 1) }
+    assert_match(/peers/, error.message)
     assert_raises(RangeError) { R.new([], 0) }
     assert_raises(RangeError) { R.new([], U32_MAX + 1) }
     assert_raises(RangeError) { R.new([], -1) }
     assert_equal U32_MAX, R.new([], U32_MAX).attempt_limit
-    all = R::MAX_PEERS.times.to_a
+    all = R::CAPACITY.times.to_a
     assert_equal all, R.new(all, 1).peers
-    assert_raises(ArgumentError) { R.new(all + [MAX], 1) }
+    error = assert_raises(RangeError) { R.new(all + [MAX], 1) }
+    assert_match(/peers/, error.message)
     assert_raises(ArgumentError) { R.new([]) }
     assert_raises(ArgumentError) { R.new([], 1, 2) }
     assert_raises(ArgumentError) { R.new(peers: [], attempt_limit: 1) }

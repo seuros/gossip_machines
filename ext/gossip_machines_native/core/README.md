@@ -39,7 +39,10 @@ assert_eq!(rumor, spent);
 assert_eq!(rumor.acknowledge(first), Ok(Acknowledgement::Acknowledged));
 assert_eq!(rumor.acknowledge(first), Ok(Acknowledgement::Duplicate));
 assert_eq!(rumor.acknowledge(NodeId(99)), Err(Refusal::UnknownPeer));
-assert_eq!(rumor.status(first), Some(Status { attempts: 1, acknowledged: true }));
+assert_eq!(
+    rumor.status(first),
+    Some(Status { attempts: 1, acknowledged: true })
+);
 assert_eq!(rumor.status(NodeId(99)), None);
 ```
 
@@ -48,7 +51,8 @@ assert_eq!(rumor.status(NodeId(99)), None);
 - **Membership.** `Rumor<N>::new(peers: &[NodeId], attempt_limit: NonZeroU32)`
   holds at most `N` peers, fixed for the rumor's life. It answers `None` for
   more than `N` ids or a repeated id; an empty slice is valid and already
-  delivered. Leave the sender out. `capacity()` is `N`.
+  delivered. Leave the sender out. `Rumor::<N>::CAPACITY` and `capacity()`
+  are `N`: the only ceiling is the compiled one.
 - **Sibling seam.** A peer is a `placement_machines::NodeId`, re-exported here
   as `gossip_machines::NodeId`; every method takes or returns it and callers
   need no direct dependency on `placement-machines`. Ids are chosen by the
@@ -86,8 +90,14 @@ assert_eq!(rumor.status(NodeId(99)), None);
 - **Queries.** `status(peer) -> Option<Status>` (`None` for a non-member),
   `delivered()`, `exhausted()`, `peers()` (the caller's order),
   `attempt_limit()`.
+  `Status` has public fields and no constructor: every pair is a valid
+  reading (the bound on `attempts` belongs to one rumor's `attempt_limit`, not
+  to the value).
 - **No time.** The core reads no clock and holds no instant or span; pacing
-  between rounds belongs to the caller.
+  between rounds belongs to the caller. No method takes `now`, so no answer
+  records or depends on one.
+- **No unreachable arms.** No `panic!`, `assert!`, `unreachable!` or `expect`
+  in the core: every branch is reachable through the public methods.
 
 The Ruby gem mirrors `Status` as a `Data` of the same name and fields and takes
 `Rumor.new(peers, attempt_limit)` positionally; peer ids are Integers.

@@ -189,22 +189,27 @@ empty.round(0, 3)     # => []
 
 ## The Rules of the Relay
 
-- **Up to 64 peers** per rumor, exposed as `Rumor::MAX_PEERS` and `capacity`. Fanout is yours: `round(seed, max)` returns at most `max` peers.
+- **Up to 64 peers** per rumor. That is the core's const-generic capacity `N` the gem is compiled with, not a rule Ruby added: it is exposed under the core's names, `Rumor::CAPACITY` and `capacity`. Fanout is yours: `round(seed, max)` returns at most `max` peers.
 - **Ruby mirrors the core.** `Rumor.new(peers, attempt_limit)` takes the same two arguments in the same order as the Rust constructor, positionally, with no defaults. `status` answers the core's `Status` as a `Data`. Peer ids are the core's `NodeId`, plain Integers you choose.
 - **Peer ids, seeds and `max` are Integers** in `0..2**64-1`. **Attempt limits** are Integers in `1..2**32-1`. Floats, strings, nil, and objects with `to_int` raise `TypeError`. Out of range raises `RangeError`.
-- **`peers` must be a real Array** with no duplicates; it may be empty. Duplicates, more than 64 peers, or the wrong number of arguments raise `ArgumentError`.
+- **`peers` must be a real Array** with no duplicates; it may be empty. Anything else raises `TypeError`. A repeated id or more than `CAPACITY` peers is a membership the core's constructor rejects, so it raises `RangeError`. `ArgumentError` is Ruby's own, for the wrong number of arguments.
+- **A `Status` is valid or does not exist.** `Status.new(attempts, acknowledged)` holds exactly what the core's `Status` fields can: `attempts` is an Integer in `0..2**32-1` and `acknowledged` is `true` or `false`. `Status.new(-1, false)` raises `RangeError` and `Status.new(0, nil)` raises `TypeError`, whether you built it or the rumor did. `Status` is sealed: subclassing it raises `TypeError` and `allocate` is gone. The binding only builds statuses, it never reads one back, so a forged one has no way in.
 - **Refusals don't raise.** `:unknown_peer` is an answer, and a refused call changes nothing. Only malformed input raises.
 - **Repeats are honoured.** Acknowledging a peer that already acknowledged answers `:duplicate`. The rumor can prove it from that peer's own ledger, so it is a success that changes nothing, never a refusal.
 - **An empty round is an answer, not a refusal.** `round` charges exactly the peers it returns. `[]` charges nobody and changes nothing.
 - **Every answer, by method.**
 
-  | Method | Honoured | Refused |
-  | --- | --- | --- |
-  | `round(seed, max)` | an Array of at most `max` peer ids, each charged one attempt; `[]` when nobody is eligible | never refuses |
-  | `acknowledge(peer)` | `:acknowledged`, or `:duplicate` when the peer had already acknowledged | `:unknown_peer` |
-  | `status(peer)` | a `Status`, or `nil` for a peer not on the roster (a query) | never refuses |
+  | Method | Honoured | Refused | Records the clock |
+  | --- | --- | --- | --- |
+  | `Rumor.new(peers, attempt_limit)` | a `Rumor` | never refuses; a rejected membership or limit raises `RangeError` | no |
+  | `round(seed, max)` | an Array of at most `max` peer ids, each charged one attempt; `[]` when nobody is eligible | never refuses | no |
+  | `acknowledge(peer)` | `:acknowledged`, or `:duplicate` when the peer had already acknowledged | `:unknown_peer` | no |
+  | `status(peer)` | a `Status`, or `nil` for a peer not on the roster (a query) | never refuses | no |
+  | `peers`, `delivered?`, `exhausted?`, `attempt_limit`, `capacity` | the value (queries) | never refuse | no |
+
+  There is no clock to record: no method takes `now`, so no answer depends on one.
 - **No ids are issued, no clock is read.** Peer ids come from you, so there are no scopes and nothing to resume after a restart except what you saved yourself. Time between rounds is yours.
-- **Bad input charges nothing.** A `round` that raises on its seed or `max` leaves every attempt counter where it was.
+- **Bad input charges nothing.** A `round` that raises on its seed or `max` leaves every attempt counter where it was. The binding checks everything that can raise before it asks the core, so a round the core has charged is always a round you get back.
 - **Frozen means frozen.** `freeze` the rumor and `round` and `acknowledge` raise `FrozenError`, even for an unknown peer or an exhausted roster. `status`, `peers`, and the predicates still read.
 
 ## What You Think You're Doing vs Reality

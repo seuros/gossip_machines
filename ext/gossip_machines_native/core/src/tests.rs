@@ -36,6 +36,11 @@ const fn status(attempts: u32, acknowledged: bool) -> Status {
     }
 }
 
+/// Peers 1 and 2, each sent at most `attempts` times.
+fn pair(attempts: u32) -> Rumor<2> {
+    Rumor::new(&ids(&[1, 2]), limit(attempts)).expect("peers")
+}
+
 #[test]
 fn fanout_is_bounded_and_untried_peers_are_not_starved() {
     let mut rumor = Rumor::<3>::new(&ids(&[1, 2, 3]), ONCE).expect("peers");
@@ -56,14 +61,14 @@ fn fanout_is_bounded_and_untried_peers_are_not_starved() {
 #[test]
 fn a_round_with_nobody_to_send_to_answers_zero_and_changes_nothing() {
     // Exhausted, not delivered.
-    let mut rumor = Rumor::<2>::new(&ids(&[1, 2]), ONCE).expect("peers");
+    let mut rumor = pair(1);
     assert_eq!(round(&mut rumor, 3, 4).len(), 2);
     assert!(rumor.exhausted() && !rumor.delivered());
     let spent = rumor.clone();
     assert_eq!(round(&mut rumor, 4, 4), NOBODY);
     assert_eq!(rumor, spent);
     // Delivered, attempts left over.
-    let mut rumor = Rumor::<2>::new(&ids(&[1, 2]), limit(5)).expect("peers");
+    let mut rumor = pair(5);
     assert_eq!(rumor.acknowledge(NodeId(1)), ACKNOWLEDGED);
     assert_eq!(rumor.acknowledge(NodeId(2)), ACKNOWLEDGED);
     assert!(rumor.delivered() && rumor.exhausted());
@@ -77,7 +82,7 @@ fn a_round_with_nobody_to_send_to_answers_zero_and_changes_nothing() {
     assert_eq!(round(&mut empty, 0, 3), NOBODY);
     assert_eq!(empty, fresh);
     // No room in the buffer: nobody is charged for a send that was not planned.
-    let mut rumor = Rumor::<2>::new(&ids(&[1, 2]), ONCE).expect("peers");
+    let mut rumor = pair(1);
     let fresh = rumor.clone();
     assert_eq!(rumor.round(0, &mut []), 0);
     assert_eq!(rumor, fresh);
@@ -107,7 +112,7 @@ fn exactly_the_peers_written_are_charged_one_attempt_each() {
 
 #[test]
 fn acknowledge_names_first_repeat_and_unknown() {
-    let mut rumor = Rumor::<2>::new(&ids(&[1, 2]), ONCE).expect("peers");
+    let mut rumor = pair(1);
     let fresh = rumor.clone();
     assert_eq!(rumor.acknowledge(NodeId(9)), UNKNOWN);
     assert_eq!(rumor, fresh);
@@ -131,9 +136,10 @@ fn acknowledge_names_first_repeat_and_unknown() {
 
 #[test]
 fn memberships_reject_duplicates_and_overflow() {
-    assert!(Rumor::<2>::new(&ids(&[1, 1]), ONCE).is_none());
-    assert!(Rumor::<1>::new(&ids(&[1, 2]), ONCE).is_none());
-    assert!(Rumor::<0>::new(&ids(&[1]), ONCE).is_none());
+    for raw in [&[1, 1][..], &[1, 2, 3]] {
+        assert_eq!(Rumor::<2>::new(&ids(raw), ONCE), None);
+    }
+    assert_eq!(Rumor::<0>::new(&ids(&[1]), ONCE), None);
     let none = Rumor::<0>::new(&[], ONCE).expect("empty");
     assert!(none.delivered());
     assert_eq!(none.capacity(), 0);
@@ -145,7 +151,8 @@ fn sparse_capacity_does_not_invent_members_or_count_inactive_ack_slots() {
     let mut rumor = Rumor::<64>::new(&peers, ONCE).expect("sparse peers");
     assert_eq!(rumor.peers(), &peers);
     assert_eq!(rumor.attempt_limit(), ONCE);
-    assert_eq!(rumor.capacity(), 64);
+    assert_eq!(rumor.capacity(), Rumor::<64>::CAPACITY);
+    assert_eq!(Rumor::<64>::CAPACITY, 64);
     assert_eq!(rumor.status(NodeId(0)), Some(status(0, false)));
     assert_eq!(rumor.status(NodeId(1)), None);
     // The default id fills unused capacity but is a member only if supplied.
