@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.2](https://github.com/seuros/gossip_machines/compare/gossip_machines/v0.4.1...gossip_machines/v0.4.2) (2026-11-14)
+
+
+### Bug Fixes
+
+* **deps:** require matryona-machines &gt;= 0.4 ([21d4ee5](https://github.com/seuros/gossip_machines/commit/21d4ee58eafdd55d78aa27a042ef7d89cec80cd3))
+
 ## [0.4.1](https://github.com/seuros/gossip_machines/compare/gossip_machines/v0.4.0...gossip_machines/v0.4.1) (2026-11-14)
 
 
