@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.5.0](https://github.com/seuros/gossip_machines/compare/gossip-machines-v0.4.0...gossip-machines-v0.5.0) (2026-11-14)
+
+
+### ⚠ BREAKING CHANGES
+
+* build the binding on matryona-machines 0.2; positive attempt_limit, compiler-checked symbols; ship no test files
+
+### Features
+
+* build the binding on matryona-machines 0.2; positive attempt_limit, compiler-checked symbols; ship no test files ([d52be3b](https://github.com/seuros/gossip_machines/commit/d52be3b7527f8e5b81a866775862fe01958efbc3))
+
 ## [0.4.0](https://github.com/seuros/gossip_machines/compare/gossip-machines-v0.3.0...gossip-machines-v0.4.0) (2026-11-14)
 
 
