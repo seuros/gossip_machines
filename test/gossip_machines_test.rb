@@ -43,7 +43,7 @@ class GossipMachinesTest < Minitest::Test
       assert_raises(TypeError) { S.new(invalid, false) }
     end
     [nil, 0, 1, 'true', :true].each do |invalid| # rubocop:disable Lint/BooleanSymbol
-      assert_raises(TypeError) { S.new(0, invalid) }
+      assert_equal 'acknowledged must be true or false', assert_raises(TypeError) { S.new(0, invalid) }.message
     end
     [-1, U32_MAX + 1, MAX].each do |invalid|
       assert_raises(RangeError) { S.new(invalid, false) }

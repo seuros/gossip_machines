@@ -5,9 +5,8 @@ use std::num::NonZeroU32;
 
 use gossip_machines::{Acknowledgement, NodeId, Refusal, Rumor};
 use magnus::typed_data::Obj;
-use magnus::value::{Qfalse, Qtrue};
 use magnus::{Error, Ruby, Symbol, Value, function, method, prelude::*};
-use matryona_machines::ruby::{Class, Registry, Symbols, exact_array, integer, positive};
+use matryona_machines::ruby::{Class, Registry, Symbols, boolean, exact_array, integer, positive};
 
 /// The `Data` class the binding builds, resolved once at init. The binding
 /// never reads a `Status` back from Ruby, so no forged value can reach the
@@ -40,19 +39,11 @@ matryona_machines::symbols! {
 /// Private hook behind `Status.new`: the core's `Status` fields, every
 /// pair of which is valid. `TypeError` for a non-Integer count or a non-boolean flag,
 /// `RangeError` for a count outside `u32`.
-fn status(ruby: &Ruby, attempts: Value, acknowledged: Value) -> Result<(u32, bool), Error> {
-    let attempts = integer(attempts, "attempts")?;
-    let acknowledged = if Qtrue::from_value(acknowledged).is_some() {
-        true
-    } else if Qfalse::from_value(acknowledged).is_some() {
-        false
-    } else {
-        return Err(Error::new(
-            ruby.exception_type_error(),
-            "acknowledged must be true or false",
-        ));
-    };
-    Ok((attempts, acknowledged))
+fn status(attempts: Value, acknowledged: Value) -> Result<(u32, bool), Error> {
+    Ok((
+        integer(attempts, "attempts")?,
+        boolean(acknowledged, "acknowledged")?,
+    ))
 }
 
 #[magnus::wrap(class = "GossipMachines::Rumor", free_immediately, size)]
