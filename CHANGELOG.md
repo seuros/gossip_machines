@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/seuros/gossip_machines/compare/gossip_machines/v0.5.0...gossip_machines/v0.5.1) (2026-11-16)
+
+
+### Bug Fixes
+
+* fix wrapped classes at load so building a value runs no Ruby ([602f442](https://github.com/seuros/gossip_machines/commit/602f4422917424ef2363300bcf186d87e3f3e95a))
+
 ## [0.5.0](https://github.com/seuros/gossip_machines/compare/gossip_machines/v0.4.2...gossip_machines/v0.5.0) (2026-11-16)
 
 
