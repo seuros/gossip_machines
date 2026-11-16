@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.6.0](https://github.com/seuros/gossip_machines/compare/gossip-machines-v0.5.0...gossip-machines-v0.6.0) (2026-11-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* seal Rumor against subclassing
+
+### Features
+
+* seal Rumor against subclassing ([5ca5d86](https://github.com/seuros/gossip_machines/commit/5ca5d86a2597115046e12ca334085a1ee59bec36))
+
 ## [0.5.0](https://github.com/seuros/gossip_machines/compare/gossip-machines-v0.4.0...gossip-machines-v0.5.0) (2026-11-14)
 
 
