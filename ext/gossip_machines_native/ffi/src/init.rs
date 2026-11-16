@@ -24,5 +24,8 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     class.define_method("delivered?", method!(Wrapper::delivered, 0))?;
     class.define_method("exhausted?", method!(Wrapper::exhausted, 0))?;
     class.define_method("attempt_limit", method!(Wrapper::attempt_limit, 0))?;
-    class.define_method("capacity", method!(Wrapper::capacity, 0))
+    class.define_method("capacity", method!(Wrapper::capacity, 0))?;
+    // `new` answers a Rumor: its class is fixed now, so building one never
+    // runs `Object.const_get`.
+    Class::pin_wrapped::<Wrapper>(ruby, class).map(drop)
 }
