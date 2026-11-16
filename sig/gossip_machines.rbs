@@ -22,6 +22,7 @@ module GossipMachines
   end
 
   # Peer ids are the core's `NodeId`: Integers in 0..2**64-1, chosen by the caller.
+  # Sealed: no allocator, and subclassing raises TypeError.
   class Rumor
     # The core's `Rumor::<N>::CAPACITY`: the const-generic `N` the gem is
     # compiled with, the most peers one rumor can hold.
@@ -49,4 +50,7 @@ module GossipMachines
     # CAPACITY.
     def capacity: () -> Integer
   end
+
+  # Private native hook `Status#initialize` validates its fields through.
+  private def self.__status: (Integer attempts, bool acknowledged) -> [Integer, bool]
 end

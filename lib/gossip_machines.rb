@@ -29,4 +29,8 @@ module GossipMachines
   # builds Status values; it never reads one back.
   Status.singleton_class.undef_method(:allocate)
   Status.define_singleton_method(:inherited) { |_| raise TypeError, "#{Status} cannot be subclassed" }
+
+  # Rumor wraps native state and has no allocator: a subclass's `new` would
+  # build a Rumor anyway, so subclassing raises too.
+  Rumor.define_singleton_method(:inherited) { |_| raise TypeError, "#{Rumor} cannot be subclassed" }
 end

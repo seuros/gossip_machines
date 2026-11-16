@@ -1,4 +1,3 @@
-#![allow(clippy::expect_used, clippy::unwrap_used, missing_docs)]
 extern crate std;
 use super::*;
 use matryona_machines::testing::{refuses, unchanged};

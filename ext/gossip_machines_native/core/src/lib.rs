@@ -1,5 +1,6 @@
 #![no_std]
 #![doc = include_str!("../README.md")]
+#![cfg_attr(not(test), deny(clippy::indexing_slicing))]
 use core::cmp::Reverse;
 use core::fmt;
 use core::num::NonZeroU32;
@@ -78,12 +79,15 @@ impl<const N: usize> Rumor<N> {
             return None;
         }
         for (index, peer) in peers.iter().enumerate() {
-            if peers[..index].contains(peer) {
+            if peers.iter().take(index).any(|earlier| earlier == peer) {
                 return None;
             }
         }
         let mut storage = [NodeId::default(); N];
-        storage[..peers.len()].copy_from_slice(peers);
+        // `peers.len() <= N`, so every peer finds a slot.
+        for (slot, peer) in storage.iter_mut().zip(peers) {
+            *slot = *peer;
+        }
         Some(Self {
             peers: storage,
             len: peers.len(),
@@ -107,20 +111,33 @@ impl<const N: usize> Rumor<N> {
     /// the rumor is delivered or exhausted, an empty membership, or an empty
     /// `out`) answers `0` and changes nothing.
     pub fn round(&mut self, seed: u64, out: &mut [NodeId]) -> usize {
+        let limit = self.attempt_limit.get();
         let mut written = 0;
-        while written < out.len() {
-            let chosen = &out[..written];
-            let candidate = (0..self.len)
-                .filter(|&index| self.eligible(index) && !chosen.contains(&self.peers[index]))
-                .min_by_key(|&index| {
-                    let peer = self.peers[index];
-                    (self.attempts[index], Reverse(score(seed, peer)), peer)
-                });
-            let Some(index) = candidate else {
+        // `written <= out.len()` throughout, so the split always succeeds and
+        // the loop ends when `rest` runs out.
+        while let Some((chosen, rest)) = out.split_at_mut_checked(written) {
+            let Some(slot) = rest.first_mut() else {
                 break;
             };
-            self.attempts[index] += 1;
-            out[written] = self.peers[index];
+            let candidate = self
+                .peers
+                .iter()
+                .zip(self.attempts.iter_mut())
+                .zip(&self.acknowledged)
+                .take(self.len)
+                .filter(|((peer, attempts), acknowledged)| {
+                    !**acknowledged && **attempts < limit && !chosen.contains(peer)
+                })
+                .min_by_key(|((peer, attempts), _)| {
+                    (**attempts, Reverse(score(seed, **peer)), **peer)
+                });
+            let Some(((peer, attempts), _)) = candidate else {
+                break;
+            };
+            // Eligible means `attempts < limit <= u32::MAX`: no overflow.
+            *attempts += 1;
+            *slot = *peer;
+            // `written < out.len()` here, so no overflow.
             written += 1;
         }
         written
@@ -138,18 +155,24 @@ impl<const N: usize> Rumor<N> {
     /// [`Refusal::UnknownPeer`] when `peer` is not in the membership. Nothing
     /// changes.
     pub fn acknowledge(&mut self, peer: NodeId) -> Result<Acknowledgement, Refusal> {
-        let index = self.index(peer).ok_or(Refusal::UnknownPeer)?;
-        if self.acknowledged[index] {
+        let acknowledged = self
+            .peers
+            .iter()
+            .zip(self.acknowledged.iter_mut())
+            .take(self.len)
+            .find_map(|(id, acknowledged)| (*id == peer).then_some(acknowledged))
+            .ok_or(Refusal::UnknownPeer)?;
+        if *acknowledged {
             return Ok(Acknowledgement::Duplicate);
         }
-        self.acknowledged[index] = true;
+        *acknowledged = true;
         Ok(Acknowledgement::Acknowledged)
     }
 
     /// All peers acknowledged, not merely exhausted their attempts.
     #[must_use]
     pub fn delivered(&self) -> bool {
-        self.acknowledged[..self.len].iter().all(|ack| *ack)
+        self.ledgers().all(|(_, _, acknowledged)| acknowledged)
     }
 
     /// No peer is eligible for another send; this does not imply delivery.
@@ -157,22 +180,28 @@ impl<const N: usize> Rumor<N> {
     /// Once true, every [`round`](Self::round) answers `0`.
     #[must_use]
     pub fn exhausted(&self) -> bool {
-        (0..self.len).all(|index| !self.eligible(index))
+        let limit = self.attempt_limit.get();
+        self.ledgers()
+            .all(|(_, attempts, acknowledged)| acknowledged || attempts >= limit)
     }
 
     /// Exact caller membership, in the caller's order, without inactive capacity.
     #[must_use]
     pub fn peers(&self) -> &[NodeId] {
-        &self.peers[..self.len]
+        // `len <= N` by construction; were it broken the membership reads
+        // as empty rather than panicking.
+        self.peers.get(..self.len).unwrap_or_default()
     }
 
     /// Per-peer attempt count and acknowledgement state, or `None` if unknown.
     #[must_use]
     pub fn status(&self, peer: NodeId) -> Option<Status> {
-        self.index(peer).map(|index| Status {
-            attempts: self.attempts[index],
-            acknowledged: self.acknowledged[index],
-        })
+        self.ledgers()
+            .find(|(id, _, _)| *id == peer)
+            .map(|(_, attempts, acknowledged)| Status {
+                attempts,
+                acknowledged,
+            })
     }
 
     /// Maximum charged sends for each peer.
@@ -187,12 +216,14 @@ impl<const N: usize> Rumor<N> {
         Self::CAPACITY
     }
 
-    const fn eligible(&self, index: usize) -> bool {
-        !self.acknowledged[index] && self.attempts[index] < self.attempt_limit.get()
-    }
-
-    fn index(&self, peer: NodeId) -> Option<usize> {
-        self.peers[..self.len].iter().position(|id| *id == peer)
+    /// Each member with its two ledgers, in membership order.
+    fn ledgers(&self) -> impl Iterator<Item = (NodeId, u32, bool)> + '_ {
+        self.peers
+            .iter()
+            .zip(&self.attempts)
+            .zip(&self.acknowledged)
+            .take(self.len)
+            .map(|((peer, attempts), acknowledged)| (*peer, *attempts, *acknowledged))
     }
 }
 

@@ -6,5 +6,4 @@
 *.bundle
 *.dylib
 *.so
-Cargo.lock
 Gemfile.lock

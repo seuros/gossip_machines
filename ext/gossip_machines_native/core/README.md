@@ -102,4 +102,4 @@ assert_eq!(rumor.status(NodeId(99)), None);
 The Ruby gem mirrors `Status` as a `Data` of the same name and fields and takes
 `Rumor.new(peers, attempt_limit)` positionally; peer ids are Integers.
 
-Initial, unstable API.
+Pre-1.0: breaking changes land in minor versions.

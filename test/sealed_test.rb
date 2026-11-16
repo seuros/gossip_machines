@@ -24,6 +24,12 @@ class SealedTest < Minitest::Test
     assert_equal S, ForgedStatus.superclass, 'the constant leaks'
   end
 
+  def test_rumor_is_sealed
+    assert_raises(TypeError) { GossipMachines::Rumor.allocate }
+    error = assert_raises(TypeError) { Class.new(GossipMachines::Rumor) }
+    assert_equal 'GossipMachines::Rumor cannot be subclassed', error.message
+  end
+
   def test_status_answers_are_built_through_status_new
     rumor = GossipMachines::Rumor.new([7], 2)
     answer = rumor.status(7)
